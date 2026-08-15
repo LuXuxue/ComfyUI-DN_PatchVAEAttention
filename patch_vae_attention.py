@@ -48,6 +48,35 @@ def _split_head_dims(C, allowed):
     return None, None
 
 
+# 已打印过的 shape（去重，同一 shape 只打印一次）
+_LOGGED_SHAPES = set()
+
+_DTYPE_NAMES = {
+    torch.float16: "torch.float16",
+    torch.bfloat16: "torch.bfloat16",
+    torch.float32: "torch.float32",
+}
+
+
+def _log_vae_shape(backend, B, nheads, N, head_dim, dtype):
+    """PRINT_SHAPE=1 时，打印 VAE attention 实际使用的 shape。
+      ("VAE_FLASH", 1, 2, 2, 16384, 16384, 256, torch.float16)
+    """
+    if os.environ.get("PRINT_SHAPE") != "1":
+        return
+    sig = (backend, B, nheads, N, head_dim, str(dtype))
+    if sig in _LOGGED_SHAPES:
+        return
+    _LOGGED_SHAPES.add(sig)
+    dtype_name = _DTYPE_NAMES.get(dtype, str(dtype))
+    print(
+        '[PatchVAEAttentionDN] VAE attention shape: '
+        '("VAE_{}", {}, {}, {}, {}, {}, {}, {})'.format(
+            backend, B, nheads, nheads, N, N, head_dim, dtype_name),
+        flush=True,
+    )
+
+
 def flash_attention(q, k, v, **kwargs):
     """Flash attention for VAE AttnBlocks.
 
@@ -99,6 +128,7 @@ def flash_attention(q, k, v, **kwargs):
                 t = t.unsqueeze(2)  # (B, N, 1, C)
             return t
 
+        _log_vae_shape("FLASH", B, nheads, N, head_dim, work_dtype)
         out = flash_attn_func(
             _to_flash(q), _to_flash(k), _to_flash(v),
             dropout_p=0.0,
@@ -173,6 +203,8 @@ def sage_attention(q, k, v, **kwargs):
             else:
                 t = t.unsqueeze(2)  # (B, N, 1, C)
             return t
+
+        _log_vae_shape("SAGE", B, nheads, N, head_dim, work_dtype)
 
         call_kwargs = {
             "tensor_layout": "NHD",
