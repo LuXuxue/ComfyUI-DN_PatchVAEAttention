@@ -1,5 +1,6 @@
 import logging
 import math
+import os
 
 import torch
 
@@ -148,15 +149,12 @@ def sage_attention(q, k, v, **kwargs):
         work_dtype = torch.float16  # fp32 VAE: convert locally, convert back
 
     try:
-        # SageAttention 2.x uses `scale`, 1.x uses `sm_scale`; 2.x supports
-        # head_dim up to 256, 1.x only [64, 96, 128]. Pick head splits that
-        # work for the installed version.
         params = inspect.signature(sageattn).parameters
         if "scale" in params:
-            allowed_head_dims = (256, 128, 96, 64)
+            allowed_head_dims = (256, 128, 64)
             scale_kwarg = "scale"
         else:
-            allowed_head_dims = (128, 96, 64)
+            allowed_head_dims = (128, 64)
             scale_kwarg = "sm_scale"
 
         head_dim, nheads = _split_head_dims(C, allowed_head_dims)
@@ -197,11 +195,11 @@ def sage_attention(q, k, v, **kwargs):
 
 
 _BACKENDS = {
-    "pytorch":      _pytorch_attention,
-    "xformers":     _xformers_attention,
-    "split":        _slice_attention,
-    "flash":        flash_attention,
-    "sageattention": sage_attention,
+    "pytorch":  _pytorch_attention,
+    "xformers": _xformers_attention,
+    "split":    _slice_attention,
+    "flash":    flash_attention,
+    "sage":     sage_attention,
 }
 
 
